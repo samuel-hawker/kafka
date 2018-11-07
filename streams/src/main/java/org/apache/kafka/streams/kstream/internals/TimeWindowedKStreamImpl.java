@@ -45,6 +45,7 @@ public class TimeWindowedKStreamImpl<K, V, W extends Window> extends AbstractStr
 
     private final Windows<W> windows;
     private final GroupedStreamAggregateBuilder<K, V> aggregateBuilder;
+    // private final Merger<K, Long> countMerger = (aggKey, aggOne, aggTwo) -> aggOne + aggTwo;
 
     TimeWindowedKStreamImpl(final Windows<W> windows,
                             final InternalStreamsBuilder builder,
@@ -134,6 +135,7 @@ public class TimeWindowedKStreamImpl<K, V, W extends Window> extends AbstractStr
         Objects.requireNonNull(reducer, "reducer can't be null");
         Objects.requireNonNull(materialized, "materialized can't be null");
 
+        final Aggregator<K, V, V> reduceAggregator = aggregatorForReducer(reducer);
         final MaterializedInternal<K, V, WindowStore<Bytes, byte[]>> materializedInternal = new MaterializedInternal<>(materialized);
         materializedInternal.generateStoreNameIfNeeded(builder, REDUCE_NAME);
 
@@ -147,7 +149,7 @@ public class TimeWindowedKStreamImpl<K, V, W extends Window> extends AbstractStr
         return aggregateBuilder.build(
             REDUCE_NAME,
             materialize(materializedInternal),
-            new KStreamWindowReduce<>(windows, materializedInternal.storeName(), reducer),
+            new KStreamWindowAggregate<>(windows, materializedInternal.storeName(), aggregateBuilder.reduceInitializer, reduceAggregator),
             materializedInternal.isQueryable(),
             materializedInternal.keySerde() != null ? new FullTimeWindowedSerde<>(materializedInternal.keySerde(), windows.size()) : null,
             materializedInternal.valueSerde());
@@ -216,4 +218,13 @@ public class TimeWindowedKStreamImpl<K, V, W extends Window> extends AbstractStr
         }
         return builder;
     }
+
+    // private Merger<K, V> mergerForAggregator(final Aggregator<K, V, V> aggregator) {
+    //     return (aggKey, aggOne, aggTwo) -> aggregator.apply(aggKey, aggTwo, aggOne);
+    // }
+
+    private Aggregator<K, V, V> aggregatorForReducer(final Reducer<V> reducer) {
+        return (aggKey, value, aggregate) -> aggregate == null ? value : reducer.apply(aggregate, value);
+    }
+
 }
